@@ -32,13 +32,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Java 8
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '8'
@@ -54,7 +54,7 @@ jobs:
         run: ant -emacs clean-generated
 
       - name: Upload preprocessed source
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: preprocessed-source
           path: |
@@ -72,12 +72,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download preprocessed source
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: preprocessed-source
 
       - name: Setup Java 8
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '8'
@@ -88,7 +88,7 @@ jobs:
 
       - name: Restore kotlinc cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             bin/classes/generator
@@ -103,7 +103,7 @@ jobs:
 
       - name: Save kotlinc cache
         if: steps.cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             bin/classes/generator
@@ -143,12 +143,12 @@ jobs:
       LWJGL_BUILD_ARCH: ${{ matrix.arch }}
     steps:
       - name: Download preprocessed source
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: preprocessed-source
 
       - name: Setup Java 8 (Linux/macOS)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         if: matrix.platform != 'windows'
         with:
           distribution: 'zulu'
@@ -156,7 +156,7 @@ jobs:
           check-latest: true
 
       - name: Setup Java 8 (Windows)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         if: matrix.platform == 'windows'
         with:
           distribution: 'zulu'
@@ -195,7 +195,7 @@ jobs:
       # --- Restore kotlinc cache ---
 
       - name: Restore kotlinc cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             bin/classes/generator
@@ -232,7 +232,7 @@ jobs:
       # --- Upload native artifacts ---
 
       - name: Upload native artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: natives-${{ matrix.platform }}-${{ matrix.arch }}
           path: bin/libs/native/${{ matrix.platform }}/${{ matrix.arch }}/
@@ -251,31 +251,31 @@ jobs:
       LWJGL_BUILD_OFFLINE: "true"
     steps:
       - name: Download preprocessed source
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: preprocessed-source
 
       # Download all native artifacts and merge them into bin/libs/native/
       - name: Download native artifacts (Linux x64)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: natives-linux-x64
           path: bin/libs/native/linux/x64
 
       - name: Download native artifacts (Windows x64)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: natives-windows-x64
           path: bin/libs/native/windows/x64
 
       - name: Download native artifacts (macOS x64)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: natives-macos-x64
           path: bin/libs/native/macos/x64
 
       - name: Download native artifacts (macOS arm64)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: natives-macos-arm64
           path: bin/libs/native/macos/arm64
@@ -283,7 +283,7 @@ jobs:
       # --- Setup JDKs ---
 
       - name: 'Setup Java (multi: 25 + 8)'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: |
@@ -300,7 +300,7 @@ jobs:
       # --- Restore kotlinc cache ---
 
       - name: Restore kotlinc cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             bin/classes/generator
@@ -338,7 +338,7 @@ jobs:
       # --- Upload release artifacts ---
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lwjgl3-release
           path: bin/RELEASE/
