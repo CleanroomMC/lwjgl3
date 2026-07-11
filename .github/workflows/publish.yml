@@ -1,0 +1,357 @@
+# Builds LWJGL3 (with org.lwjgl3 package rename) and optionally publishes
+# to the CleanroomMC Maven repository.
+#
+# Triggered manually via workflow_dispatch.
+# - publish_to_maven=false (default): produces artifacts only
+# - publish_to_maven=true: also publishes to https://repo.cleanroommc.com/releases/
+
+name: LWJGL3 Build & Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_to_maven:
+        description: 'Publish to Maven repository (true) or artifact only (false)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  ANT_OPTS: -Xmx2G
+  LWJGL_BUILD_TYPE: nightly
+
+jobs:
+  # ===========================================================================
+  # Job 1: Preprocess — rename org.lwjgl → org.lwjgl3, set version, rewrite gradle
+  # ===========================================================================
+  preprocess:
+    name: Preprocess
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Java 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '8'
+          check-latest: true
+
+      - name: Install Ant
+        run: sudo apt-get update && sudo apt-get -yq install ant
+
+      - name: Run preprocess script
+        run: bash preprocess.sh
+
+      - name: Clean generated sources
+        run: ant -emacs clean-generated
+
+      - name: Upload preprocessed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: preprocessed-source
+          path: |
+            .
+            !.git/**
+          retention-days: 7
+          compression-level: 6
+
+  # ===========================================================================
+  # Job 2: Compile Kotlin templates (shared across all build jobs)
+  # ===========================================================================
+  kotlinc-cache:
+    name: Compile Kotlin Templates
+    needs: preprocess
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download preprocessed source
+        uses: actions/download-artifact@v4
+        with:
+          name: preprocessed-source
+
+      - name: Setup Java 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '8'
+          check-latest: true
+
+      - name: Install Ant
+        run: sudo apt-get update && sudo apt-get -yq install ant
+
+      - name: Restore kotlinc cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            bin/classes/generator
+            bin/classes/templates
+            bin/libs/java
+          key: kotlinc-${{ github.sha }}
+          fail-on-cache-miss: false
+
+      - name: Compile templates
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: ant -emacs compile-templates
+
+      - name: Save kotlinc cache
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            bin/classes/generator
+            bin/classes/templates
+            bin/libs/java
+          key: kotlinc-${{ github.sha }}
+
+  # ===========================================================================
+  # Job 3: Native builds (matrix: Linux x64, Windows x64, macOS x64 + arm64)
+  # ===========================================================================
+  native-build:
+    name: Native ${{ matrix.platform }}-${{ matrix.arch }}
+    needs: kotlinc-cache
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            arch: x64
+            runner: ubuntu-latest
+            container: almalinux:8
+          - platform: windows
+            arch: x64
+            runner: windows-2022
+            container: ''
+          - platform: macos
+            arch: x64
+            runner: macos-13
+            container: ''
+          - platform: macos
+            arch: arm64
+            runner: macos-14
+            container: ''
+    env:
+      LWJGL_BUILD_ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Download preprocessed source
+        uses: actions/download-artifact@v4
+        with:
+          name: preprocessed-source
+
+      - name: Setup Java 8 (Linux/macOS)
+        uses: actions/setup-java@v4
+        if: matrix.platform != 'windows'
+        with:
+          distribution: 'zulu'
+          java-version: '8'
+          check-latest: true
+
+      - name: Setup Java 8 (Windows)
+        uses: actions/setup-java@v4
+        if: matrix.platform == 'windows'
+        with:
+          distribution: 'zulu'
+          java-version: '8'
+          check-latest: true
+
+      # --- Install build dependencies per platform ---
+
+      - name: Install dependencies (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          dnf -y install git
+          dnf -y install epel-release
+          dnf config-manager --set-enabled powertools
+          dnf -y update
+          dnf -y install gcc-toolset-15-gcc gcc-toolset-15-gcc-c++ ant make
+          dnf -y install libX11-devel libXt-devel gtk3-devel dbus-devel
+
+      - name: Install dependencies (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          choco install ant -y --no-progress
+
+      - name: Configure MSVC (Windows)
+        if: matrix.platform == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      # No extra deps needed for macOS — clang and Xcode SDK are preinstalled
+      - name: Install Ant (macOS)
+        if: matrix.platform == 'macos'
+        run: brew install ant
+
+      # --- Restore kotlinc cache ---
+
+      - name: Restore kotlinc cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            bin/classes/generator
+            bin/classes/templates
+            bin/libs/java
+          key: kotlinc-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      # --- Build ---
+
+      - name: Generate bindings
+        run: ant -emacs clean-generated generate
+
+      - name: Build Java
+        run: ant -emacs compile
+
+      - name: Build native (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          source /opt/rh/gcc-toolset-15/enable || true
+          ant -emacs compile-native -Dgcc.version.print=true
+
+      - name: Build native (Windows)
+        if: matrix.platform == 'windows'
+        shell: cmd
+        run: |
+          set PATH=%PATH:C:\Program Files\LLVM\bin;=%
+          ant -emacs compile-native -Dcl.version.print=true
+
+      - name: Build native (macOS)
+        if: matrix.platform == 'macos'
+        run: ant -emacs compile-native -Dclang.version.print=true
+
+      # --- Upload native artifacts ---
+
+      - name: Upload native artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: natives-${{ matrix.platform }}-${{ matrix.arch }}
+          path: bin/libs/native/${{ matrix.platform }}/${{ matrix.arch }}/
+          retention-days: 7
+          compression-level: 6
+
+  # ===========================================================================
+  # Job 4: Release — assemble jars (classes, sources, natives, javadoc) and
+  #         optionally publish to Maven
+  # ===========================================================================
+  release-and-publish:
+    name: 'Release & Publish'
+    needs: native-build
+    runs-on: ubuntu-latest
+    env:
+      LWJGL_BUILD_OFFLINE: "true"
+    steps:
+      - name: Download preprocessed source
+        uses: actions/download-artifact@v4
+        with:
+          name: preprocessed-source
+
+      # Download all native artifacts and merge them into bin/libs/native/
+      - name: Download native artifacts (Linux x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: natives-linux-x64
+          path: bin/libs/native/linux/x64
+
+      - name: Download native artifacts (Windows x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: natives-windows-x64
+          path: bin/libs/native/windows/x64
+
+      - name: Download native artifacts (macOS x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: natives-macos-x64
+          path: bin/libs/native/macos/x64
+
+      - name: Download native artifacts (macOS arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: natives-macos-arm64
+          path: bin/libs/native/macos/arm64
+
+      # --- Setup JDKs ---
+
+      - name: 'Setup Java (multi: 25 + 8)'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: |
+            25
+            8
+          check-latest: true
+
+      - name: Install Ant
+        run: sudo apt-get update && sudo apt-get -yq install ant
+
+      - name: Set JAVA8_HOME
+        run: echo "JAVA8_HOME=$JAVA_HOME_8_X64" >> "$GITHUB_ENV"
+
+      # --- Restore kotlinc cache ---
+
+      - name: Restore kotlinc cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            bin/classes/generator
+            bin/classes/templates
+            bin/libs/java
+          key: kotlinc-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      # --- Determine version ---
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep '^lwjglVersion=' gradle.properties | cut -d= -f2)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version: $VERSION"
+
+      # --- Build ---
+
+      - name: Generate bindings
+        run: ant -emacs clean-generated generate
+
+      - name: Build Java
+        run: ant -emacs compile
+
+      - name: Release (assemble jars)
+        run: |
+          export JAVA_HOME=$JAVA_HOME_25_X64
+          ant -emacs release -Dcore.java27=true -Dbuild.version=${{ steps.version.outputs.version }} -Dbuild.revision=0 -Djavadoc.skip=true
+
+      # LWJGL_BUILD_OFFLINE=true makes get-release copy natives from
+      # bin/libs/native/{platform}/{arch}/ instead of downloading from S3.
+      # This is where the matrix artifacts were placed.
+
+      # --- Upload release artifacts ---
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lwjgl3-release
+          path: bin/RELEASE/
+          retention-days: 14
+          compression-level: 6
+
+      # --- Publish to Maven (optional) ---
+
+      - name: Publish to Maven
+        if: ${{ inputs.publish_to_maven }}
+        env:
+          CLEANROOM_USER: ${{ secrets.CLEANROOM_USER }}
+          CLEANROOM_PWD: ${{ secrets.CLEANROOM_PWD }}
+        run: |
+          export JAVA_HOME=$JAVA_HOME_25_X64
+          ./gradlew -Prelease publish --parallel --max-workers=4 --info
