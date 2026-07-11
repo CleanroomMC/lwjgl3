@@ -95,6 +95,7 @@ jobs:
             bin/classes/templates
             bin/libs/java
           key: kotlinc-${{ github.sha }}
+          enableCrossOsArchive: true
           fail-on-cache-miss: false
 
       - name: Compile templates
@@ -110,6 +111,7 @@ jobs:
             bin/classes/templates
             bin/libs/java
           key: kotlinc-${{ github.sha }}
+          enableCrossOsArchive: true
 
   # ===========================================================================
   # Job 3: Native builds (matrix: Linux x64, Windows x64, macOS x64 + arm64)
@@ -183,7 +185,7 @@ jobs:
 
       - name: Configure MSVC (Windows)
         if: matrix.platform == 'windows'
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: TheMrMilchmann/setup-msvc-dev@v4
         with:
           arch: amd64
 
@@ -192,9 +194,10 @@ jobs:
         if: matrix.platform == 'macos'
         run: brew install ant
 
-      # --- Restore kotlinc cache ---
+      # --- Restore kotlinc cache (cross-OS: saved on ubuntu, restored on any runner) ---
 
       - name: Restore kotlinc cache
+        id: cache-restore
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -202,7 +205,13 @@ jobs:
             bin/classes/templates
             bin/libs/java
           key: kotlinc-${{ github.sha }}
-          fail-on-cache-miss: true
+          enableCrossOsArchive: true
+          fail-on-cache-miss: false
+
+      # Fallback: if cache miss, compile templates locally (also downloads Java deps)
+      - name: Compile templates (cache fallback)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: ant -emacs compile-templates
 
       # --- Build ---
 
@@ -300,6 +309,7 @@ jobs:
       # --- Restore kotlinc cache ---
 
       - name: Restore kotlinc cache
+        id: cache-restore
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -307,7 +317,12 @@ jobs:
             bin/classes/templates
             bin/libs/java
           key: kotlinc-${{ github.sha }}
-          fail-on-cache-miss: true
+          enableCrossOsArchive: true
+          fail-on-cache-miss: false
+
+      - name: Compile templates (cache fallback)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: ant -emacs compile-templates
 
       # --- Determine version ---
 
