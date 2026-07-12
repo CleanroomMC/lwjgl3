@@ -128,7 +128,7 @@ jobs:
           - platform: linux
             arch: x64
             runner: ubuntu-latest
-            container: almalinux:8
+            container: ''
           - platform: windows
             arch: x64
             runner: windows-2022
@@ -141,8 +141,6 @@ jobs:
             arch: arm64
             runner: macos-14
             container: ''
-    env:
-      LWJGL_BUILD_ARCH: ${{ matrix.arch }}
     steps:
       - name: Download preprocessed source
         uses: actions/download-artifact@v8
@@ -170,12 +168,9 @@ jobs:
       - name: Install dependencies (Linux)
         if: matrix.platform == 'linux'
         run: |
-          dnf -y install git
-          dnf -y install epel-release
-          dnf config-manager --set-enabled powertools
-          dnf -y update
-          dnf -y install gcc-toolset-15-gcc gcc-toolset-15-gcc-c++ ant make
-          dnf -y install libX11-devel libXt-devel gtk3-devel dbus-devel
+          sudo apt-get update
+          sudo apt-get -yq install git ant make gcc-15 g++-15
+          sudo apt-get -yq install libx11-dev libxt-dev libgtk-3-dev libdbus-1-dev
 
       - name: Install dependencies (Windows)
         if: matrix.platform == 'windows'
@@ -223,9 +218,7 @@ jobs:
 
       - name: Build native (Linux)
         if: matrix.platform == 'linux'
-        run: |
-          source /opt/rh/gcc-toolset-15/enable || true
-          ant -emacs compile-native -Dgcc.version.print=true
+        run: ant -emacs compile-native -Dgcc.version=15 -Dgcc.version.print=true
 
       - name: Build native (Windows)
         if: matrix.platform == 'windows'

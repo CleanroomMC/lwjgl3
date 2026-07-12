@@ -96,10 +96,15 @@ done
 #   org_lwjgl_malloc → org_lwjgl3_malloc (and calloc/realloc/free/aligned_*)
 #   *org_lwjgl_*     → *org_lwjgl3_* (version.script glob)
 #
+# Kotlin template files (.kt) are also included because they contain
+# embedded C macros (e.g. NVG_MALLOC, VMA_SYSTEM_ALIGNED_MALLOC) that
+# reference org_lwjgl_* symbols. These templates are used by ant generate
+# to produce the C source files, so they must be renamed too.
+#
 # We use a simple literal replacement: org_lwjgl → org_lwjgl3
 # This is safe because "org_lwjgl" only appears as JNI/identifier prefixes.
 
-echo "[preprocess] Replacing org_lwjgl → org_lwjgl3 in C/CPP/H files..."
+echo "[preprocess] Replacing org_lwjgl → org_lwjgl3 in C/CPP/H/KT files..."
 
 find . \
     -type f \
@@ -109,6 +114,7 @@ find . \
         -name '*.cc' -o \
         -name '*.h' -o \
         -name '*.hpp' -o \
+        -name '*.kt' -o \
         -name '*.script' -o \
         -name '*.def' \
     \) \
