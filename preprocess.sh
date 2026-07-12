@@ -124,6 +124,20 @@ find . \
     sed -i 's/org_lwjgl/org_lwjgl3/g' "$f"
 done
 
+# XML build configs reference C source files by name in exclude/include patterns
+# (e.g. org_lwjgl_system_SharedLibraryUtil.c, org_lwjgl_opengl_WGL.c). These
+# files are renamed above, so the patterns must match. We cannot use the blanket
+# org_lwjgl→org_lwjgl3 replacement here because step 1 already changed
+# org.lwjgl→org.lwjgl3 in XML files; doing it again would corrupt org_lwjgl3
+# into org_lwjgl33. Instead we match only underscore-style C identifiers:
+# org_lwjgl_ followed by more identifier characters.
+
+echo "[preprocess] Replacing org_lwjgl_ → org_lwjgl3_ in XML build configs..."
+
+find config -type f -name '*.xml' -print0 | while IFS= read -r -d '' f; do
+    sed -i 's/\borg_lwjgl_/org_lwjgl3_/g' "$f"
+done
+
 # Also handle version.script files (no extension or .script)
 for f in config/linux/version.script config/freebsd/version.script; do
     if [ -f "$f" ]; then

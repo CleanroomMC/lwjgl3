@@ -169,7 +169,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get -yq install git ant make gcc-15 g++-15
+          sudo apt-get -yq install git ant make gcc-14 g++-14
           sudo apt-get -yq install libx11-dev libxt-dev libgtk-3-dev libdbus-1-dev
 
       - name: Install dependencies (Windows)
@@ -218,7 +218,7 @@ jobs:
 
       - name: Build native (Linux)
         if: matrix.platform == 'linux'
-        run: ant -emacs compile-native -Dgcc.version=15 -Dgcc.version.print=true
+        run: ant -emacs compile-native -Dgcc.version=14 -Dgcc.version.print=true
 
       - name: Build native (Windows)
         if: matrix.platform == 'windows'
