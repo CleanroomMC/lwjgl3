@@ -131,15 +131,15 @@ jobs:
             container: ''
           - platform: windows
             arch: x64
-            runner: windows-2022
+            runner: windows-latest
             container: ''
           - platform: macos
             arch: x64
-            runner: macos-13
+            runner: macos-26-intel
             container: ''
           - platform: macos
             arch: arm64
-            runner: macos-14
+            runner: macos-latest
             container: ''
     steps:
       - name: Download preprocessed source
